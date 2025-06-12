@@ -206,21 +206,37 @@ class AuthController extends Controller
     public function logout(Request $request)
     {
         try {
-            // Get device name from token
-            $token = PersonalAccessToken::findToken($request->bearerToken());
-            if ($token) {
-                // Only revoke tokens for this device
-                $request->user()->tokens()->where('name', $token->name)->delete();
+            $user = $request->user();
+
+            // Validates the token automatically through Sanctum
+            if (!$user) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Unauthenticated.'
+                ], Response::HTTP_UNAUTHORIZED); // Returns 401
+            }
+
+            // Invalidates the current token
+            if ($request->bearerToken()) {
+                $user->currentAccessToken()->delete();
+            }
+
+            // Handles remember token cleanup
+            if ($user->remember_token) {
+                $user->remember_token = null;
+                $user->save();
             }
 
             return response()->json([
+                'status' => 'success',
                 'message' => 'Successfully logged out'
-            ]);
+            ], Response::HTTP_OK); // Returns 200
         } catch (\Exception $e) {
             Log::error('Logout failed', ['error' => $e->getMessage()]);
+            // Returns 500 for server errors
             return response()->json([
-                'message' => 'Logout failed',
-                'error' => 'An error occurred during logout'
+                'status' => 'error',
+                'message' => 'An error occurred during logout'
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
