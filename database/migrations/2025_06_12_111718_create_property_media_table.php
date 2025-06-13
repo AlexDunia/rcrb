@@ -13,6 +13,8 @@ return new class extends Migration
     {
         Schema::create('property_media', function (Blueprint $table) {
             $table->id();
+            $table->foreignId('property_id')->constrained()->onDelete('cascade');
+            $table->string('path');
             $table->timestamps();
         });
     }
