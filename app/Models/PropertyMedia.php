@@ -3,19 +3,29 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Facades\Storage;
 
 class PropertyMedia extends Model
 {
-    protected $fillable = ['path'];
+    use SoftDeletes;
+
+    protected $fillable = [
+        'property_id',
+        'url',
+        'type'
+    ];
 
     public function property()
     {
         return $this->belongsTo(Property::class);
     }
 
-    public function getUrlAttribute()
+    public function getUrlAttribute($value)
     {
-        return Storage::disk('s3')->url($this->path);
+        if (filter_var($value, FILTER_VALIDATE_URL)) {
+            return $value;
+        }
+        return $value ? Storage::disk('public')->url($value) : null;
     }
 }

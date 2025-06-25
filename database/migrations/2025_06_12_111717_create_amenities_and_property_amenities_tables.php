@@ -11,9 +11,25 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('amenities_and_property_amenities_tables', function (Blueprint $table) {
+        Schema::create('amenities', function (Blueprint $table) {
             $table->id();
+            $table->string('name');
+            $table->string('icon')->nullable();
+            $table->text('description')->nullable();
+            $table->string('category')->nullable();
             $table->timestamps();
+            $table->softDeletes();
+        });
+
+        Schema::create('property_amenities', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('property_id')->constrained()->onDelete('cascade');
+            $table->foreignId('amenity_id')->constrained()->onDelete('cascade');
+            $table->text('details')->nullable();
+            $table->timestamps();
+            $table->softDeletes();
+
+            $table->unique(['property_id', 'amenity_id']);
         });
     }
 
@@ -22,6 +38,7 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('amenities_and_property_amenities_tables');
+        Schema::dropIfExists('property_amenities');
+        Schema::dropIfExists('amenities');
     }
 };

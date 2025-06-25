@@ -29,15 +29,9 @@ class AuthController extends Controller
         return response()->json([
             'message' => 'CSRF cookie set successfully',
             'csrf_token' => csrf_token()
-        ])
-        ->withHeaders([
-            'Access-Control-Allow-Credentials' => 'true',
-            'Access-Control-Allow-Origin' => 'http://localhost:5173',
-            'Access-Control-Allow-Methods' => 'GET, POST, PUT, DELETE, OPTIONS',
-            'Access-Control-Allow-Headers' => 'X-Requested-With, Content-Type, X-Token-Auth, Authorization, X-XSRF-TOKEN',
-        ])
-        ->cookie('XSRF-TOKEN', csrf_token(), 60, '/', null, true, false);
+        ])->cookie('XSRF-TOKEN', csrf_token(), 60, '/', null, true, false);
     }
+
 
     /**
      * Register a new user
