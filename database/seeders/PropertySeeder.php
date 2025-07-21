@@ -145,11 +145,7 @@ class PropertySeeder extends Seeder
 
             // Add images
             foreach ($images as $imageUrl) {
-                PropertyMedia::create([
-                    'property_id' => $property->id,
-                    'url' => $imageUrl,
-                    'type' => 'image'
-                ]);
+                $this->addMediaToProperty($property, $imageUrl);
             }
         }
     }
@@ -193,7 +189,7 @@ class PropertySeeder extends Seeder
             ]);
 
             // Add media
-            $this->addPropertyMedia($property);
+            $this->addMediaToProperty($property);
         }
     }
 
@@ -236,7 +232,7 @@ class PropertySeeder extends Seeder
             ]);
 
             // Add media
-            $this->addPropertyMedia($property);
+            $this->addMediaToProperty($property);
         }
     }
 
@@ -278,11 +274,11 @@ class PropertySeeder extends Seeder
             ]);
 
             // Add media
-            $this->addPropertyMedia($property);
+            $this->addMediaToProperty($property);
         }
     }
 
-    private function addPropertyMedia($property)
+    private function addMediaToProperty($property, $imageUrl = null)
     {
         // Add 1-3 random images from our pool
         $numImages = rand(1, 3);
@@ -295,11 +291,16 @@ class PropertySeeder extends Seeder
         foreach ($selectedImages as $imageUrl) {
             PropertyMedia::create([
                 'property_id' => $property->id,
+                'resource_name' => 'Property',
+                'resource_record_key' => (string)$property->id,
                 'media_type' => 'image',
-                'url' => $imageUrl,
-                'is_featured' => false,
-                'title' => 'Property Image',
-                'description' => 'Property view'
+                'media_category' => 'Primary',
+                'image_size_description' => 'Large',
+                'media_url' => $imageUrl,
+                'media_caption' => 'Property Image',
+                'media_description' => 'Property view',
+                'is_active' => true,
+                'order_index' => 0
             ]);
         }
     }

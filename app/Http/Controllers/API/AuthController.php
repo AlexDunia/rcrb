@@ -197,41 +197,35 @@ class AuthController extends Controller
     /**
      * Logout user
      */
-    public function logout(Request $request)
-    {
-        try {
-            $user = $request->user();
 
-            // Validates the token automatically through Sanctum
-            if (!$user) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'Unauthenticated.'
-                ], Response::HTTP_UNAUTHORIZED); // Returns 401
-            }
+     public function logout(Request $request)
+     {
+         try {
+             $user = $request->user();
 
-            // Invalidates the current token
-            if ($request->bearerToken()) {
-                $user->currentAccessToken()->delete();
-            }
+             if ($user) {
+                 if ($request->has('device_name')) {
+                     $user->tokens()->where('name', $request->device_name)->delete();
+                 } else {
+                     $request->user()->currentAccessToken()->delete();
+                 }
+             }
 
-            // Handles remember token cleanup
-            if ($user->remember_token) {
-                $user->remember_token = null;
-                $user->save();
-            }
+             return response()->json([
+                 'message' => 'Logged out successfully'
+             ], Response::HTTP_OK);
 
-            return response()->json([
-                'status' => 'success',
-                'message' => 'Successfully logged out'
-            ], Response::HTTP_OK); // Returns 200
-        } catch (\Exception $e) {
-            Log::error('Logout failed', ['error' => $e->getMessage()]);
-            // Returns 500 for server errors
-            return response()->json([
-                'status' => 'error',
-                'message' => 'An error occurred during logout'
-            ], Response::HTTP_INTERNAL_SERVER_ERROR);
-        }
-    }
+         } catch (\Exception $e) {
+             Log::error('Logout failed', [
+                 'error' => $e->getMessage(),
+                 'trace' => $e->getTraceAsString()
+             ]);
+
+             return response()->json([
+                 'message' => 'Logout failed',
+                 'error' => 'An error occurred during logout'
+             ], Response::HTTP_INTERNAL_SERVER_ERROR);
+         }
+     }
+
 }
