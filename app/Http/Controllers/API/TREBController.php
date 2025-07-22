@@ -9,36 +9,25 @@ use Illuminate\Support\Facades\Log;
 
 class TREBController extends Controller
 {
-    protected $token;
-    protected $baseUrl;
-
-    public function __construct()
-    {
-        $this->token = env('TREB_API_TOKEN');
-        $this->baseUrl = env('TREB_API_URL', 'https://query.ampre.ca/odata');
-    }
-
     public function fetch()
     {
         try {
-            if (!$this->token) {
-                Log::error('TREB API Token not configured');
-                return response()->json([
-                    'success' => false,
-                    'error' => 'API configuration error',
-                    'message' => 'TREB API Token not configured'
-                ], Response::HTTP_INTERNAL_SERVER_ERROR);
-            }
+            $token = config('services.treb.data');
 
-            // Try to get the properties directly with SSL verification disabled
+            // Add debug logging
+            Log::info('TREB API Token Debug', [
+                'token_exists' => !empty($token),
+                'token_length' => strlen($token ?? '')
+            ]);
+
             $response = Http::withOptions([
                 'verify' => false // 🚨 disables SSL verification - for development only
             ])->withHeaders([
-                'Authorization' => 'Bearer ' . $this->token,
+                'Authorization' => 'Bearer ' . $token,
                 'Accept' => 'application/json',
                 'Content-Type' => 'application/json',
                 'OData-Version' => '4.0'
-            ])->get($this->baseUrl . '/Property?$top=5');
+            ])->get('https://query.ampre.ca/odata/Property?$top=5');
 
             // Log the response for debugging
             Log::info('TREB API Response', [
