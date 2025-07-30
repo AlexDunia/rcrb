@@ -4,13 +4,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\API\AllblogpostController;
 use App\Http\Controllers\API\AuthController;
 use App\Http\Controllers\API\PropertyController;
-
 use App\Http\Controllers\API\TREBController;
-
-use App\Http\Controllers\API\MediaController;
-
-
-
 
 // Auth routes
 Route::get('/auth/init', [AuthController::class, 'initializeAuth']);
@@ -30,12 +24,11 @@ Route::get('/allblogposts', [AllblogpostController::class, 'index']);
 Route::get('/properties', [PropertyController::class, 'index']);
 Route::get('/properties/featured', [PropertyController::class, 'featured']);
 Route::get('/properties/{id}', [PropertyController::class, 'show']);
+Route::get('/trebmembers', [TREBController::class, 'fetchMembers']);
+Route::get('/trebmember/{memberKey}', [TREBController::class, 'fetchSingleMember']); // Added
 
-// Media routes
-Route::get('/media/property', [MediaController::class, 'getPropertyMedia']);
-Route::get('/media/proxy', [MediaController::class, 'proxyImage']);
-Route::get('/media/{mediaKey}', [MediaController::class, 'show']);
-Route::post('/media', [MediaController::class, 'store']);
-Route::put('/media/{mediaKey}', [MediaController::class, 'update']);
-Route::delete('/media/{mediaKey}', [MediaController::class, 'destroy']);
-Route::get('/trebmedia/{mlsNumber}', [MediaController::class, 'getTrebMedia']);
+Route::get('/trebmedia/{listingKey}', [TREBController::class, 'fetchMedia']);
+
+Route::get('/trebsearch', [TREBController::class, 'search']);
+
+

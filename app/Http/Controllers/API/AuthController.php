@@ -45,7 +45,7 @@ class AuthController extends Controller
                 'name' => ['required', 'string', 'max:255'],
                 'email' => ['required', 'string', 'email', 'max:255', 'unique:users'],
                 'password' => ['required', Password::min(8)->mixedCase()->numbers()],
-                'role' => ['required', 'string', 'in:client,agent'],
+                'role' => ['sometimes', 'string', 'in:client,agent'],
                 'device_name' => ['required', 'string']
             ]);
 
@@ -61,7 +61,7 @@ class AuthController extends Controller
                 'name' => $request->name,
                 'email' => $request->email,
                 'password' => Hash::make($request->password),
-                'role' => $request->role,
+                'role' => $request->role ?? 'client',
             ]);
 
             // Create token with device name
