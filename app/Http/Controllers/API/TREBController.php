@@ -26,7 +26,7 @@ class TREBController extends Controller
                 'Accept' => 'application/json',
                 'Content-Type' => 'application/json',
                 'OData-Version' => '4.0'
-            ])->get('https://query.ampre.ca/odata/Property?$top=50'); // Changed to 50
+            ])->get('https://query.ampre.ca/odata/Property?$top=50&$orderby=ModificationTimestamp desc'); // Ordered by latest first
 
             Log::info('TREB API Response', [
                 'status' => $response->status(),
@@ -350,8 +350,11 @@ class TREBController extends Controller
             $topQuery = '$top=' . $perPage;
             $countQuery = '$count=true';
 
+            // Add ordering by newest first
+            $orderQuery = '$orderby=ModificationTimestamp desc';
+
             // Build final query string
-            $queryString = implode('&', array_filter([$filterQuery, $skipQuery, $topQuery, $countQuery]));
+            $queryString = implode('&', array_filter([$filterQuery, $skipQuery, $topQuery, $countQuery, $orderQuery]));
             $url = 'https://query.ampre.ca/odata/Property?' . $queryString;
 
             Log::info('TREB Search API Request', [
@@ -395,9 +398,75 @@ class TREBController extends Controller
             $total = $data['@odata.count'] ?? 0;
             $lastPage = ceil($total / $perPage);
 
+            $properties = $data['value'] ?? [];
+
+            // Fetch media for each property
+            foreach ($properties as &$property) {
+                if (isset($property['ListingKey'])) {
+                    // Query media for this property
+                    $mediaQuery = "\$filter=ResourceRecordKey eq '{$property['ListingKey']}' and ResourceName eq 'Property'&\$top=30&\$orderby=ModificationTimestamp,MediaKey";
+                    $encodedQuery = str_replace(' ', '%20', $mediaQuery);
+                    $mediaUrl = "https://query.ampre.ca/odata/Media?$encodedQuery";
+
+                    $mediaResponse = Http::withOptions([
+                        'verify' => false
+                    ])->withHeaders([
+                        'Authorization' => 'Bearer ' . $token,
+                        'Accept' => 'application/json',
+                        'Content-Type' => 'application/json',
+                        'OData-Version' => '4.0'
+                    ])->get($mediaUrl);
+
+                    if ($mediaResponse->successful()) {
+                        $mediaData = $mediaResponse->json();
+                        $mediaItems = $mediaData['value'] ?? [];
+                        $uniqueMedia = [];
+                        $seenMediaObjectIDs = [];
+
+                        // First pass - get LargestNoWatermark images
+                        foreach ($mediaItems as $item) {
+                            $mediaObjectID = $item['MediaObjectID'];
+                            $imageSize = $item['ImageSizeDescription'];
+
+                            if (!in_array($mediaObjectID, $seenMediaObjectIDs)) {
+                                if ($imageSize === 'LargestNoWatermark') {
+                                    $uniqueMedia[] = $item;
+                                    $seenMediaObjectIDs[] = $mediaObjectID;
+                                }
+                            }
+                        }
+
+                        // Second pass - get other sizes if needed
+                        foreach ($mediaItems as $item) {
+                            $mediaObjectID = $item['MediaObjectID'];
+                            $imageSize = $item['ImageSizeDescription'];
+
+                            if (!in_array($mediaObjectID, $seenMediaObjectIDs) &&
+                                in_array($imageSize, ['Largest', 'Large', 'Medium', 'Thumbnail'])) {
+                                $uniqueMedia[] = $item;
+                                $seenMediaObjectIDs[] = $mediaObjectID;
+                            }
+                        }
+
+                        // Sort by Order first
+                        usort($uniqueMedia, function ($a, $b) {
+                            return $a['Order'] <=> $b['Order'];
+                        });
+
+                        // Rearrange to make 5th image first (if it exists)
+                        if (count($uniqueMedia) >= 5) {
+                            $fifthImage = array_splice($uniqueMedia, 4, 1)[0]; // Remove 5th image
+                            array_unshift($uniqueMedia, $fifthImage); // Add it to the beginning
+                        }
+
+                        $property['media'] = $uniqueMedia;
+                    }
+                }
+            }
+
             return response()->json([
                 'success' => true,
-                'data' => $data['value'] ?? [],
+                'data' => $properties,
                 'pagination' => [
                     'total' => $total,
                     'per_page' => $perPage,
