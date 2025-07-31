@@ -10,6 +10,21 @@ use Illuminate\Http\Request;
 
 class TREBController extends Controller
 {
+    private $httpClient;
+
+    public function __construct()
+    {
+        // Pre-configure HTTP client for better performance
+        $this->httpClient = Http::withOptions([
+            'verify' => false
+        ])->withHeaders([
+            'Authorization' => 'Bearer ' . config('services.treb.data'),
+            'Accept' => 'application/json',
+            'Content-Type' => 'application/json',
+            'OData-Version' => '4.0'
+        ]);
+    }
+
     public function fetch()
     {
         try {
@@ -19,14 +34,7 @@ class TREBController extends Controller
                 'token_length' => strlen($token ?? '')
             ]);
 
-            $response = Http::withOptions([
-                'verify' => false // 🚨 For development only
-            ])->withHeaders([
-                'Authorization' => 'Bearer ' . $token,
-                'Accept' => 'application/json',
-                'Content-Type' => 'application/json',
-                'OData-Version' => '4.0'
-            ])->get('https://query.ampre.ca/odata/Property?$top=50&$orderby=ModificationTimestamp desc'); // Ordered by latest first
+            $response = $this->httpClient->get('https://query.ampre.ca/odata/Property?$top=50&$orderby=ModificationTimestamp desc'); // Ordered by latest first
 
             Log::info('TREB API Response', [
                 'status' => $response->status(),
@@ -80,14 +88,7 @@ class TREBController extends Controller
             $encodedQuery = str_replace(' ', '%20', $query); // Basic URL encoding
             $url = "https://query.ampre.ca/odata/Media?$encodedQuery";
 
-            $response = Http::withOptions([
-                'verify' => false // 🚨 For development only
-            ])->withHeaders([
-                'Authorization' => 'Bearer ' . $token,
-                'Accept' => 'application/json',
-                'Content-Type' => 'application/json',
-                'OData-Version' => '4.0'
-            ])->get($url);
+            $response = $this->httpClient->get($url);
 
             Log::info('TREB Media API Response', [
                 'status' => $response->status(),
@@ -145,10 +146,16 @@ class TREBController extends Controller
                 return $a['Order'] <=> $b['Order'];
             });
 
+            // Rearrange to make 5th image first (if it exists)
+            if (count($uniqueMedia) >= 5) {
+                $fifthImage = array_splice($uniqueMedia, 4, 1)[0];
+                array_unshift($uniqueMedia, $fifthImage);
+            }
+
             return response()->json([
                 'success' => true,
                 'data' => ['value' => $uniqueMedia],
-                'media_count' => count($uniqueMedia) // Count unique media items
+                'media_count' => count($uniqueMedia)
             ]);
         } catch (\Exception $e) {
             Log::error('TREB Media API Exception', [
@@ -187,14 +194,7 @@ class TREBController extends Controller
                 $encodedQuery = str_replace(' ', '%20', $query);
                 $url = "https://query.ampre.ca/odata/Member?$encodedQuery";
 
-                $response = Http::withOptions([
-                    'verify' => false // 🚨 For development only
-                ])->withHeaders([
-                    'Authorization' => 'Bearer ' . $token,
-                    'Accept' => 'application/json',
-                    'Content-Type' => 'application/json',
-                    'OData-Version' => '4.0'
-                ])->get($url);
+                $response = $this->httpClient->get($url);
 
                 Log::info('TREB Members API Response', [
                     'status' => $response->status(),
@@ -263,14 +263,7 @@ class TREBController extends Controller
 
             $url = "https://query.ampre.ca/odata/Member('$memberKey')";
 
-            $response = Http::withOptions([
-                'verify' => false // 🚨 For development only
-            ])->withHeaders([
-                'Authorization' => 'Bearer ' . $token,
-                'Accept' => 'application/json',
-                'Content-Type' => 'application/json',
-                'OData-Version' => '4.0'
-            ])->get($url);
+            $response = $this->httpClient->get($url);
 
             Log::info('TREB Single Member API Response', [
                 'status' => $response->status(),
@@ -315,10 +308,8 @@ class TREBController extends Controller
     public function search(Request $request)
     {
         try {
-            $token = config('services.treb.data');
-
             // Get search parameters from request
-            $search = $request->input('search');
+            $search = $request->input('q', $request->input('search')); // Check for 'q' first, fallback to 'search'
             $filter = $request->input('filter');
             $page = max(1, $request->input('page', 1));
             $perPage = min(50, max(1, $request->input('per_page', 10))); // Limit between 1-50
@@ -331,8 +322,8 @@ class TREBController extends Controller
             if ($search) {
                 // Search in valid fields only
                 $searchFields = [
-                    "contains(UnparsedAddress, '$search')",
-                    "contains(PostalCode, '$search')",
+                    "contains(UnparsedAddress, '$search')", // Street address
+                    "contains(PostalCode, '$search')" // Postal code
                 ];
                 $query[] = '(' . implode(' or ', $searchFields) . ')';
             }
@@ -365,14 +356,7 @@ class TREBController extends Controller
                 'perPage' => $perPage
             ]);
 
-            $response = Http::withOptions([
-                'verify' => false // 🚨 For development only
-            ])->withHeaders([
-                'Authorization' => 'Bearer ' . $token,
-                'Accept' => 'application/json',
-                'Content-Type' => 'application/json',
-                'OData-Version' => '4.0'
-            ])->get($url);
+            $response = $this->httpClient->get($url);
 
             Log::info('TREB Search API Response', [
                 'status' => $response->status(),
@@ -400,7 +384,7 @@ class TREBController extends Controller
 
             $properties = $data['value'] ?? [];
 
-            // Fetch media for each property
+            // Fetch media for all properties
             foreach ($properties as &$property) {
                 if (isset($property['ListingKey'])) {
                     // Query media for this property
@@ -408,14 +392,7 @@ class TREBController extends Controller
                     $encodedQuery = str_replace(' ', '%20', $mediaQuery);
                     $mediaUrl = "https://query.ampre.ca/odata/Media?$encodedQuery";
 
-                    $mediaResponse = Http::withOptions([
-                        'verify' => false
-                    ])->withHeaders([
-                        'Authorization' => 'Bearer ' . $token,
-                        'Accept' => 'application/json',
-                        'Content-Type' => 'application/json',
-                        'OData-Version' => '4.0'
-                    ])->get($mediaUrl);
+                    $mediaResponse = $this->httpClient->get($mediaUrl);
 
                     if ($mediaResponse->successful()) {
                         $mediaData = $mediaResponse->json();
@@ -455,8 +432,8 @@ class TREBController extends Controller
 
                         // Rearrange to make 5th image first (if it exists)
                         if (count($uniqueMedia) >= 5) {
-                            $fifthImage = array_splice($uniqueMedia, 4, 1)[0]; // Remove 5th image
-                            array_unshift($uniqueMedia, $fifthImage); // Add it to the beginning
+                            $fifthImage = array_splice($uniqueMedia, 4, 1)[0];
+                            array_unshift($uniqueMedia, $fifthImage);
                         }
 
                         $property['media'] = $uniqueMedia;
