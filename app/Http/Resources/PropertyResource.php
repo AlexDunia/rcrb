@@ -24,7 +24,7 @@ class PropertyResource extends JsonResource
             'bathrooms' => $this->bathrooms,
             'size' => $this->size,
             'yearBuilt' => $this->year_built,
-            'images' => $this->media->pluck('url')->toArray(),
+            'images' => $this->media->pluck('media_url')->toArray(),
             'features' => $this->features->pluck('name')->toArray(),
             'amenities' => $this->amenities->pluck('name')->toArray(),
             'agent' => $this->when($this->agent, [

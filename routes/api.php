@@ -5,6 +5,7 @@ use App\Http\Controllers\API\AllblogpostController;
 use App\Http\Controllers\API\AuthController;
 use App\Http\Controllers\API\PropertyController;
 use App\Http\Controllers\API\TREBController;
+use App\Http\Controllers\API\FavoriteController;
 
 // Auth routes
 Route::get('/auth/init', [AuthController::class, 'initializeAuth']);
@@ -25,10 +26,15 @@ Route::get('/properties', [PropertyController::class, 'index']);
 Route::get('/properties/featured', [PropertyController::class, 'featured']);
 Route::get('/properties/{id}', [PropertyController::class, 'show']);
 Route::get('/trebmembers', [TREBController::class, 'fetchMembers']);
-Route::get('/trebmember/{memberKey}', [TREBController::class, 'fetchSingleMember']); // Added
+Route::get('/trebmember/{memberKey}', [TREBController::class, 'fetchSingleMember']);
 
 Route::get('/trebmedia/{listingKey}', [TREBController::class, 'fetchMedia']);
 
 Route::get('/trebsearch', [TREBController::class, 'search']);
 
-
+// Favorite routes
+Route::middleware('auth:sanctum')->group(function () {
+    Route::post('/favorites/toggle', [FavoriteController::class, 'toggle']);
+    Route::get('/favorites', [FavoriteController::class, 'index']);
+    Route::post('/favorites/check', [FavoriteController::class, 'check']);
+});
