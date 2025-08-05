@@ -376,7 +376,7 @@ CREATE TABLE property_views (
     viewed_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Saved/favorited properties
+
 CREATE TABLE saved_properties (
     id SERIAL PRIMARY KEY,
     property_id INTEGER NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
