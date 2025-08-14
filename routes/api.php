@@ -40,4 +40,6 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('/favorites', [FavoritesController::class, 'clear']);
 });
 
+Route::get('/auth/google', [\App\Http\Controllers\Auth\GoogleController::class, 'redirect']);
+Route::get('/auth/google/callback', [\App\Http\Controllers\Auth\GoogleController::class, 'callback']);
 
