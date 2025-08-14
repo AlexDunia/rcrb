@@ -31,4 +31,13 @@ Route::get('/trebmedia/{listingKey}', [TREBController::class, 'fetchMedia']);
 
 Route::get('/trebsearch', [TREBController::class, 'search']);
 
+Route::middleware('auth:sanctum')->group(function () {
+    Route::get('/auth/user', [AuthController::class, 'getCurrentUser']);
+    Route::get('/auth/verify', [AuthController::class, 'verifyToken']);
+    Route::post('/auth/logout', [AuthController::class, 'logout']);
+    Route::post('/favorites', [FavoritesController::class, 'toggle']);
+    Route::get('/favorites', [FavoritesController::class, 'index']);
+    Route::delete('/favorites', [FavoritesController::class, 'clear']);
+});
+
 
