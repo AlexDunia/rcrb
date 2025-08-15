@@ -5,6 +5,8 @@ use App\Http\Controllers\API\AllblogpostController;
 use App\Http\Controllers\API\AuthController;
 use App\Http\Controllers\API\PropertyController;
 use App\Http\Controllers\API\TREBController;
+use App\Http\Controllers\Auth\GoogleController;
+use App\Http\Controllers\API\FavoritesController;
 
 // Auth routes
 Route::get('/auth/init', [AuthController::class, 'initializeAuth']);
@@ -40,6 +42,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('/favorites', [FavoritesController::class, 'clear']);
 });
 
-Route::get('/auth/google', [\App\Http\Controllers\Auth\GoogleController::class, 'redirect']);
-Route::get('/auth/google/callback', [\App\Http\Controllers\Auth\GoogleController::class, 'callback']);
+
+Route::get('/auth/google/redirect', [GoogleController::class, 'redirect'])->name('google.redirect');
+Route::get('/auth/google/callback', [GoogleController::class, 'callback'])->name('google.callback');
+
+
 

@@ -34,7 +34,7 @@ class GoogleController extends Controller
             // For API / SPA: return token instead of redirecting
             $token = $user->createToken('api_token')->plainTextToken;
 
-            return redirect("http://localhost:5173/dashboard?token={$token}");
+            return redirect("http://localhost:5173/landing?token={$token}");
         } catch (\Exception $e) {
             return redirect('/login')->withErrors(['msg' => 'Google login failed']);
         }
