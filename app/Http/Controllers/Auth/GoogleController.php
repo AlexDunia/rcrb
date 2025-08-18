@@ -1,42 +1,61 @@
 <?php
-
+// app/Http/Controllers/Auth/GoogleController.php
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use Laravel\Socialite\Facades\Socialite;
 use App\Models\User;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 
 class GoogleController extends Controller
 {
-    // Redirect to Google
     public function redirect()
     {
-        return Socialite::driver('google')->redirect();
+        return Socialite::driver('google')
+            ->scopes(['openid', 'email', 'profile'])
+            ->stateless()
+            ->redirect();
     }
 
-    // Handle callback from Google
     public function callback()
     {
         try {
             $googleUser = Socialite::driver('google')->stateless()->user();
 
+            Log::info('Google user data', [
+                'email' => $googleUser->getEmail(),
+                'name' => $googleUser->getName(),
+                'id' => $googleUser->getId(),
+                'attributes' => (array) $googleUser,
+            ]);
+
             $user = User::firstOrCreate(
                 ['email' => $googleUser->getEmail()],
                 [
-                    'name' => $googleUser->getName(),
-                    'password' => bcrypt(str()->random(16)), // random password since Google handles login
+                    'name' => $googleUser->getName() ?? 'Unknown',
+                    'password' => bcrypt(str()->random(16)),
+                    'role' => 'client',
                 ]
             );
 
             Auth::login($user);
 
-            // For API / SPA: return token instead of redirecting
             $token = $user->createToken('api_token')->plainTextToken;
 
-            return redirect("http://localhost:5173/landing?token={$token}");
+            Log::info('Google login successful', [
+                'user_id' => $user->id,
+                'token' => $token,
+            ]);
+
+            return redirect()->away("http://localhost:5173/landing?token={$token}");
         } catch (\Exception $e) {
-            return redirect('/login')->withErrors(['msg' => 'Google login failed']);
+            Log::error('Google login failed', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'google_user' => isset($googleUser) ? (array) $googleUser : null,
+            ]);
+            return redirect()->away('http://localhost:5173/login?error=' . urlencode('Google login failed: ' . $e->getMessage()));
         }
     }
 }
