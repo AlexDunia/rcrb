@@ -9,17 +9,12 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Cookie;
-use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rules\Password;
-use Laravel\Sanctum\PersonalAccessToken;
 use Symfony\Component\HttpFoundation\Response;
 
 class AuthController extends Controller
 {
-    /**
-     * Initialize authentication session
-     */
     public function initializeAuth()
     {
         if (request()->hasSession()) {
@@ -32,10 +27,6 @@ class AuthController extends Controller
         ])->cookie('XSRF-TOKEN', csrf_token(), 60, '/', null, true, false);
     }
 
-
-    /**
-     * Register a new user
-     */
     public function register(Request $request)
     {
         Log::info('Registration attempt', ['data' => $request->except('password')]);
@@ -64,10 +55,9 @@ class AuthController extends Controller
                 'role' => $request->role ?? 'client',
             ]);
 
-            // Create token with device name
             $token = $user->createToken($request->device_name)->plainTextToken;
 
-            Log::info('Registration successful', ['user_id' => $user->id]);
+            Log::info('Registration successful', ['user_id' => $user->id, 'email' => $user->email, 'token' => $token]);
 
             return response()->json([
                 'message' => 'Registration successful',
@@ -79,13 +69,11 @@ class AuthController extends Controller
                 ],
                 'token' => $token,
             ], Response::HTTP_CREATED);
-
         } catch (\Exception $e) {
             Log::error('Registration failed', [
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
             ]);
-
             return response()->json([
                 'message' => 'Registration failed',
                 'error' => 'An error occurred during registration'
@@ -93,9 +81,6 @@ class AuthController extends Controller
         }
     }
 
-    /**
-     * Login user
-     */
     public function login(Request $request)
     {
         try {
@@ -119,12 +104,10 @@ class AuthController extends Controller
             }
 
             $user = User::where('email', $request->email)->firstOrFail();
-
-            // Revoke all existing tokens for this device
             $user->tokens()->where('name', $request->device_name)->delete();
-
-            // Create new token
             $token = $user->createToken($request->device_name)->plainTextToken;
+
+            Log::info('Login successful', ['user_id' => $user->id, 'email' => $user->email, 'token' => $token]);
 
             return response()->json([
                 'message' => 'Login successful',
@@ -136,7 +119,6 @@ class AuthController extends Controller
                 ],
                 'token' => $token,
             ], Response::HTTP_OK);
-
         } catch (\Exception $e) {
             Log::error('Login failed', ['error' => $e->getMessage()]);
             return response()->json([
@@ -146,13 +128,18 @@ class AuthController extends Controller
         }
     }
 
-    /**
-     * Get current user
-     */
     public function getCurrentUser(Request $request)
     {
         try {
-            $user = $request->user();
+            $user = Auth::user();
+            if (!$user) {
+                Log::warning('No authenticated user found', ['token' => $request->bearerToken()]);
+                return response()->json([
+                    'message' => 'Unauthorized',
+                    'error' => 'No authenticated user found'
+                ], Response::HTTP_UNAUTHORIZED);
+            }
+            Log::info('Fetched current user', ['user_id' => $user->id, 'email' => $user->email]);
             return response()->json([
                 'user' => [
                     'id' => $user->id,
@@ -160,23 +147,29 @@ class AuthController extends Controller
                     'email' => $user->email,
                     'role' => $user->role,
                 ]
-            ]);
+            ], Response::HTTP_OK);
         } catch (\Exception $e) {
-            Log::error('Get current user failed', ['error' => $e->getMessage()]);
+            Log::error('Get current user failed', [
+                'error' => $e->getMessage(),
+                'token' => $request->bearerToken()
+            ]);
             return response()->json([
                 'message' => 'Failed to get user data',
                 'error' => 'An error occurred while fetching user data'
-            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+            ], Response::HTTP_UNAUTHORIZED);
         }
     }
 
-    /**
-     * Verify token
-     */
     public function verifyToken(Request $request)
     {
         try {
-            $user = $request->user();
+            $user = Auth::user();
+            if (!$user) {
+                return response()->json([
+                    'valid' => false,
+                    'message' => 'Invalid token'
+                ], Response::HTTP_UNAUTHORIZED);
+            }
             return response()->json([
                 'valid' => true,
                 'user' => [
@@ -185,8 +178,9 @@ class AuthController extends Controller
                     'email' => $user->email,
                     'role' => $user->role,
                 ]
-            ]);
+            ], Response::HTTP_OK);
         } catch (\Exception $e) {
+            Log::error('Token verification failed', ['error' => $e->getMessage()]);
             return response()->json([
                 'valid' => false,
                 'message' => 'Invalid token'
@@ -194,38 +188,38 @@ class AuthController extends Controller
         }
     }
 
-    /**
-     * Logout user
-     */
+public function logout(Request $request)
+    {
+        try {
+            $user = Auth::user();
+            if (!$user) {
+                Log::warning('No authenticated user found for logout', ['token' => $request->bearerToken()]);
+                return response()->json([
+                    'message' => 'No authenticated user found'
+                ], Response::HTTP_UNAUTHORIZED);
+            }
 
-     public function logout(Request $request)
-     {
-         try {
-             $user = $request->user();
+            // Delete token for the device or current token
+            if ($request->has('device_name')) {
+                $user->tokens()->where('name', $request->device_name)->delete();
+            } else {
+                $request->user()->currentAccessToken()->delete();
+            }
 
-             if ($user) {
-                 if ($request->has('device_name')) {
-                     $user->tokens()->where('name', $request->device_name)->delete();
-                 } else {
-                     $request->user()->currentAccessToken()->delete();
-                 }
-             }
+            Log::info('Logout successful', ['user_id' => $user->id, 'email' => $user->email]);
 
-             return response()->json([
-                 'message' => 'Logged out successfully'
-             ], Response::HTTP_OK);
-
-         } catch (\Exception $e) {
-             Log::error('Logout failed', [
-                 'error' => $e->getMessage(),
-                 'trace' => $e->getTraceAsString()
-             ]);
-
-             return response()->json([
-                 'message' => 'Logout failed',
-                 'error' => 'An error occurred during logout'
-             ], Response::HTTP_INTERNAL_SERVER_ERROR);
-         }
-     }
-
+            return response()->json([
+                'message' => 'Logged out successfully'
+            ], Response::HTTP_OK);
+        } catch (\Exception $e) {
+            Log::error('Logout failed', [
+                'error' => $e->getMessage(),
+                'token' => $request->bearerToken()
+            ]);
+            return response()->json([
+                'message' => 'Logout failed',
+                'error' => 'An error occurred during logout'
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
+    }
 }

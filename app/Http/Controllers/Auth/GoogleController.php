@@ -1,5 +1,5 @@
 <?php
-// app/Http/Controllers/Auth/GoogleController.php
+
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
@@ -7,21 +7,34 @@ use Laravel\Socialite\Facades\Socialite;
 use App\Models\User;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 class GoogleController extends Controller
 {
     public function redirect()
     {
-        return Socialite::driver('google')
-            ->scopes(['openid', 'email', 'profile'])
-            ->stateless()
-            ->redirect();
+        try {
+            $url = Socialite::driver('google')
+                ->scopes(['openid', 'email', 'profile'])
+                ->stateless()
+                ->redirect()
+                ->getTargetUrl();
+            Log::info('Google redirect URL generated', ['url' => $url]);
+            return response()->json(['url' => $url], 200);
+        } catch (\Exception $e) {
+            Log::error('Google redirect failed', ['error' => $e->getMessage()]);
+            return response()->json(['error' => 'Failed to generate redirect URL'], 500);
+        }
     }
 
     public function callback()
     {
         try {
-            $googleUser = Socialite::driver('google')->stateless()->user();
+            $client = new \GuzzleHttp\Client(['verify' => false]);
+            $googleUser = Socialite::driver('google')
+                ->stateless()
+                ->setHttpClient($client)
+                ->user();
 
             Log::info('Google user data', [
                 'email' => $googleUser->getEmail(),
@@ -33,18 +46,20 @@ class GoogleController extends Controller
             $user = User::firstOrCreate(
                 ['email' => $googleUser->getEmail()],
                 [
-                    'name' => $googleUser->getName() ?? 'Unknown',
-                    'password' => bcrypt(str()->random(16)),
+                    'name' => $googleUser->getName() ?? $googleUser->getEmail(),
+                    'password' => bcrypt(Str::random(16)),
                     'role' => 'client',
+                    'google_id' => $googleUser->getId(),
                 ]
             );
 
-            Auth::login($user);
-
-            $token = $user->createToken('api_token')->plainTextToken;
+            Auth::login($user, true);
+            $user->tokens()->where('name', 'web')->delete();
+            $token = $user->createToken('web')->plainTextToken;
 
             Log::info('Google login successful', [
                 'user_id' => $user->id,
+                'email' => $user->email,
                 'token' => $token,
             ]);
 
@@ -55,7 +70,7 @@ class GoogleController extends Controller
                 'trace' => $e->getTraceAsString(),
                 'google_user' => isset($googleUser) ? (array) $googleUser : null,
             ]);
-            return redirect()->away('http://localhost:5173/login?error=' . urlencode('Google login failed: ' . $e->getMessage()));
+            return redirect()->away('http://localhost:5173/login?error=' . urlencode('Google login failed, please try again.'));
         }
     }
 }
