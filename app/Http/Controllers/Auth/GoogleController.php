@@ -1,5 +1,4 @@
 <?php
-
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
@@ -22,7 +21,7 @@ class GoogleController extends Controller
             Log::info('Google redirect URL generated', ['url' => $url]);
             return response()->json(['url' => $url], 200);
         } catch (\Exception $e) {
-            Log::error('Google redirect failed', ['error' => $e->getMessage()]);
+            Log::error('Google redirect failed', ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
             return response()->json(['error' => 'Failed to generate redirect URL'], 500);
         }
     }
@@ -55,7 +54,7 @@ class GoogleController extends Controller
 
             Auth::login($user, true);
             $user->tokens()->where('name', 'web')->delete();
-            $token = $user->createToken('web')->plainTextToken;
+            $token = $user->createToken('web', ['*'])->plainTextToken; // Added scopes for broader access
 
             Log::info('Google login successful', [
                 'user_id' => $user->id,
@@ -63,14 +62,19 @@ class GoogleController extends Controller
                 'token' => $token,
             ]);
 
-            return redirect()->away("http://localhost:5173/landing?token={$token}");
+            return redirect()->away("http://localhost:5173/landing?token={$token}&user=" . urlencode(json_encode([
+                'id' => $user->id,
+                'name' => $user->name,
+                'email' => $user->email,
+                'role' => $user->role,
+            ])));
         } catch (\Exception $e) {
             Log::error('Google login failed', [
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
                 'google_user' => isset($googleUser) ? (array) $googleUser : null,
             ]);
-            return redirect()->away('http://localhost:5173/login?error=' . urlencode('Google login failed, please try again.'));
+            return redirect()->away('http://localhost:5173/login?error=' . urlencode('Failed to initialize user'));
         }
     }
 }
