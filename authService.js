@@ -1,233 +1,226 @@
-import axios from 'axios';
-import { clearSensitiveData, sanitizeInput, validateEmail, securityHeaders } from '@/utils/security';
+import axios from '@/utils/axios';
+import { sanitizeInput } from '@/utils/validators';
+import router from '@/router';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
+const API_URL = '/api/auth';
+const TOKEN_KEY = 'auth_token';
+const USER_DATA_KEY = 'user_data';
 
 // Configure axios defaults
 axios.defaults.withCredentials = true;
-axios.defaults.headers.common['Accept'] = 'application/json';
-axios.defaults.headers.common['X-Requested-With'] = 'XMLHttpRequest';
 
-// Request interceptor for security
+// Request interceptor for API calls
 axios.interceptors.request.use(async (config) => {
-    // Add security headers
-    config.headers['X-Requested-With'] = 'XMLHttpRequest';
-    config.headers['Accept'] = 'application/json';
-
-    // Prevent caching of sensitive routes
-    if (config.url?.includes('/auth/')) {
-        config.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate';
-        config.headers['Pragma'] = 'no-cache';
-    }
-
-    // Add Authorization header if token exists
-    const token = localStorage.getItem('auth_token');
-    if (token) {
-        config.headers['Authorization'] = `Bearer ${token}`;
-    }
-
-    return config;
+  const authToken = sessionStorage.getItem(TOKEN_KEY);
+  if (authToken) {
+    config.headers['Authorization'] = `Bearer ${authToken}`;
+  }
+  config.headers['Accept'] = 'application/json';
+  config.headers['Content-Type'] = 'application/json';
+  return config;
 });
 
-// Response interceptor for security checks
+// Response interceptor
 axios.interceptors.response.use(
-    (response) => {
-        // Validate content type for security
-        const contentType = response.headers['content-type'];
-        if (contentType && !contentType.includes('application/json')) {
-            throw new Error('Invalid response type received');
-        }
-        return response;
-    },
-    (error) => {
-        // Handle security-related errors
-        if (error.response?.status === 401 || error.response?.status === 419) {
-            // Clear sensitive data and force logout on auth errors
-            clearSensitiveData();
-            window.location.href = '/login';
-        }
-        return Promise.reject(error);
+  (response) => response,
+  async (error) => {
+    if (error.response?.status === 401) {
+      authService.clearAuthData();
+      router.push('/login?error=Unauthorized');
     }
+    return Promise.reject(error);
+  }
 );
 
 const authService = {
-    async initializeAuth() {
-        try {
-            // Initialize CSRF protection
-            const response = await axios.get(`${API_URL}/auth/init`, {
-                withCredentials: true
-            });
-
-            // Set the CSRF token in axios headers
-            const token = response.data.csrf_token;
-            if (token) {
-                axios.defaults.headers.common['X-CSRF-TOKEN'] = token;
-            }
-
-            return true;
-        } catch (error) {
-            console.error('Failed to initialize auth:', error);
-            return false;
-        }
-    },
-
-    async register(userData) {
-        try {
-            // Initialize auth first
-            await this.initializeAuth();
-
-            const response = await axios.post(`${API_URL}/auth/register`, {
-                ...userData,
-                device_name: await this.generateFingerprint()
-            });
-
-            if (response.data.token) {
-                localStorage.setItem('auth_token', response.data.token);
-                axios.defaults.headers.common['Authorization'] = `Bearer ${response.data.token}`;
-            }
-
-            return response.data;
-        } catch (error) {
-            throw this.handleError(error);
-        }
-    },
-
-    async login(credentials) {
-        try {
-            // Input validation
-            if (!credentials.email || !credentials.password) {
-                throw new Error('Invalid credentials format');
-            }
-
-            // Validate email format
-            if (!validateEmail(credentials.email)) {
-                throw new Error('Invalid email format');
-            }
-
-            // Sanitize inputs
-            const sanitizedEmail = sanitizeInput(credentials.email);
-
-            // Initialize auth first
-            await this.initializeAuth();
-
-            const response = await axios.post(`${API_URL}/auth/login`, {
-                email: sanitizedEmail,
-                password: credentials.password,
-                device_name: await this.generateFingerprint()
-            });
-
-            if (response.data.token) {
-                localStorage.setItem('auth_token', response.data.token);
-                axios.defaults.headers.common['Authorization'] = `Bearer ${response.data.token}`;
-            }
-
-            return response.data;
-        } catch (error) {
-            throw this.handleError(error);
-        }
-    },
-
-    async getCurrentUser() {
-        try {
-            const response = await axios.get(`${API_URL}/auth/user`);
-            return response.data;
-        } catch (error) {
-            throw this.handleError(error);
-        }
-    },
-
-    async verifyToken() {
-        try {
-            const response = await axios.get(`${API_URL}/auth/verify`);
-            return response.data;
-        } catch (error) {
-            this.logout();
-            throw this.handleError(error);
-        }
-    },
-
-    async logout() {
-        try {
-            await axios.post(`${API_URL}/auth/logout`);
-        } catch (error) {
-            console.error('Logout error:', error);
-        } finally {
-            // Clear all sensitive data
-            clearSensitiveData();
-            delete axios.defaults.headers.common['Authorization'];
-            // Redirect to login
-            window.location.href = '/login';
-        }
-    },
-
-    // Generate secure device fingerprint
-    async generateFingerprint() {
-        const fpData = [
-            navigator.userAgent,
-            navigator.language,
-            screen.width,
-            screen.height,
-            new Date().getTimezoneOffset(),
-            navigator.hardwareConcurrency,
-            navigator.deviceMemory,
-            navigator.platform
-        ].join('|');
-
-        // Use SubtleCrypto for secure hash
-        const msgBuffer = new TextEncoder().encode(fpData);
-        const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
-        const hashArray = Array.from(new Uint8Array(hashBuffer));
-        return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-    },
-
-    // Check authentication status
-    async isAuthenticated() {
-        try {
-            await this.verifyToken();
-            return true;
-        } catch {
-            return false;
-        }
-    },
-
-    handleError(error) {
-        if (error.response) {
-            // Handle specific error cases
-            switch (error.response.status) {
-                case 401:
-                case 419:
-                    this.logout();
-                    return {
-                        status: error.response.status,
-                        message: 'Session expired. Please login again.',
-                    };
-                case 422:
-                    return {
-                        status: error.response.status,
-                        message: 'Validation failed',
-                        errors: error.response.data.errors || {}
-                    };
-                case 429:
-                    return {
-                        status: error.response.status,
-                        message: 'Too many attempts. Please try again later.',
-                        retryAfter: parseInt(error.response.headers['retry-after']) || 300
-                    };
-                default:
-                    return {
-                        status: error.response.status,
-                        message: error.response.data.message || 'An error occurred',
-                        errors: error.response.data.errors || {}
-                    };
-            }
-        }
-
-        return {
-            status: 500,
-            message: 'Network error occurred',
-            errors: {}
-        };
+  async initializeAuth() {
+    try {
+      await axios.get(`${API_URL}/init`);
+      if (sessionStorage.getItem(TOKEN_KEY)) {
+        return await this.getCurrentUser();
+      }
+      return null;
+    } catch (error) {
+      console.error('Failed to initialize auth:', error);
+      throw error;
     }
+  },
+
+  async login({ email, password }) {
+    try {
+      const userAgent = navigator.userAgent;
+      const deviceName = `Vue - ${userAgent}`;
+      const sanitizedData = {
+        email: sanitizeInput(email.toLowerCase()),
+        password,
+        device_name: deviceName,
+      };
+
+      const response = await axios.post(`${API_URL}/login`, sanitizedData);
+
+      if (response.data.token) {
+        sessionStorage.setItem(TOKEN_KEY, response.data.token);
+        sessionStorage.setItem(USER_DATA_KEY, JSON.stringify(response.data.user));
+        sessionStorage.setItem('device_name', deviceName);
+        if (response.data.user && response.data.user.role) {
+          localStorage.setItem('userRole', response.data.user.role);
+        }
+      }
+
+      return response.data;
+    } catch (error) {
+      throw this.handleError(error);
+    }
+  },
+
+  async register({ name, email, password, role }) {
+    try {
+      const sanitizedData = {
+        name: sanitizeInput(name),
+        email: sanitizeInput(email.toLowerCase()),
+        password,
+        role,
+        device_name: 'web'
+      };
+
+      const response = await axios.post(`${API_URL}/register`, sanitizedData);
+
+      if (response.data.token) {
+        sessionStorage.setItem(TOKEN_KEY, response.data.token);
+        sessionStorage.setItem(USER_DATA_KEY, JSON.stringify(response.data.user));
+        if (response.data.user && response.data.user.role) {
+          localStorage.setItem('userRole', response.data.user.role);
+        }
+      }
+
+      return response.data;
+    } catch (error) {
+      throw this.handleError(error);
+    }
+  },
+
+  async logout() {
+    try {
+      const deviceName = sessionStorage.getItem('device_name') || 'web';
+      const token = sessionStorage.getItem(TOKEN_KEY);
+
+      if (token) {
+        await axios.post(`${API_URL}/logout`, {
+          device_name: deviceName
+        });
+      }
+    } catch (error) {
+      console.error('Logout failed:', error);
+      throw error;
+    } finally {
+      this.clearAuthData();
+      router.push('/login');
+    }
+  },
+
+  clearAuthData() {
+    sessionStorage.removeItem(TOKEN_KEY);
+    sessionStorage.removeItem(USER_DATA_KEY);
+    sessionStorage.removeItem('device_name');
+    localStorage.removeItem('userRole');
+  },
+
+  isAuthenticated() {
+    return !!sessionStorage.getItem(TOKEN_KEY);
+  },
+
+  getStoredUserData() {
+    const userData = sessionStorage.getItem(USER_DATA_KEY);
+    return userData ? JSON.parse(userData) : null;
+  },
+
+  async getCurrentUser() {
+    try {
+      const response = await axios.get(`${API_URL}/user`);
+      sessionStorage.setItem(USER_DATA_KEY, JSON.stringify(response.data.user));
+      return response.data.user;
+    } catch (error) {
+      console.error('Failed to fetch current user:', error);
+      throw this.handleError(error);
+    }
+  },
+
+  async verifyToken() {
+    try {
+      const response = await axios.get(`${API_URL}/verify`);
+      return response.data.valid;
+    } catch {
+      return false;
+    }
+  },
+
+  async googleLogin() {
+    try {
+      const response = await axios.get('https://127.0.0.1:8000/api/auth/google/redirect', {
+        headers: {
+          'Accept': 'application/json'
+        }
+      });
+      if (response.data.url) {
+        window.location.href = response.data.url;
+      } else {
+        throw new Error('Failed to get Google auth URL');
+      }
+    } catch (error) {
+      console.error('Google sign-up failed:', error);
+      throw this.handleError(error);
+    }
+  },
+
+  async yahooLogin() {
+    try {
+      const response = await axios.get('https://127.0.0.1:8000/api/auth/yahoo/redirect', {
+        headers: {
+          'Accept': 'application/json'
+        }
+      });
+      if (response.data.url) {
+        window.location.href = response.data.url;
+      } else {
+        throw new Error('Failed to get Yahoo auth URL');
+      }
+    } catch (error) {
+      console.error('Yahoo sign-up failed:', error);
+      throw this.handleError(error);
+    }
+  },
+
+  handleError(error) {
+    if (error.response) {
+      switch (error.response.status) {
+        case 422:
+          return {
+            status: 422,
+            errors: error.response.data.errors
+          };
+        case 401:
+          this.clearAuthData();
+          return {
+            status: 401,
+            message: 'Invalid credentials'
+          };
+        case 500:
+          return {
+            status: 500,
+            message: 'An unexpected error occurred. Please try again.'
+          };
+        default:
+          return {
+            status: error.response.status,
+            message: error.response.data.message || 'An error occurred'
+          };
+      }
+    }
+    return {
+      status: 0,
+      message: 'Network error. Please check your connection.'
+    };
+  }
 };
 
 export default authService;
