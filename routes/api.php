@@ -7,6 +7,12 @@ use App\Http\Controllers\API\TREBController;
 use App\Http\Controllers\Auth\GoogleController;
 use App\Http\Controllers\Auth\YahooController;
 use App\Http\Controllers\API\FavoritesController;
+use Google\Client;
+use Google\Service\Docs;
+
+use App\Services\GoogleDriveService;
+
+
 
 Route::prefix('auth')->group(function () {
     Route::get('/init', [AuthController::class, 'initializeAuth']);
@@ -39,3 +45,50 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/favorites', [FavoritesController::class, 'index']);
     Route::delete('/favorites', [FavoritesController::class, 'clear']);
 });
+
+Route::post('/captions', [AllblogpostController::class, 'getCaptions']);
+Route::get('/list-files', function (GoogleDriveService $driveService) {
+    return $driveService->listFiles();
+});
+
+// Route::get('/fetch-doc', function () {
+//     try {
+//         // Load Google client
+//         $client = new Client();
+//         $client->setAuthConfig(storage_path('app/google/realcitytrial-7d0a39f1da1b.json'));
+//         $client->addScope(Docs::DOCUMENTS_READONLY);
+
+//         $docsService = new Docs($client);
+
+//         // Replace with your real Google Doc ID
+//         $documentId = 'YOUR_DOC_ID_HERE';
+
+//         $doc = $docsService->documents->get($documentId);
+
+//         $content = $doc->getBody()->getContent();
+//         $text = "";
+
+//         foreach ($content as $structuralElement) {
+//             $paragraph = $structuralElement->getParagraph();
+
+//             if (!is_null($paragraph)) {
+//                 foreach ($paragraph->getElements() as $element) {
+//                     $textRun = $element->getTextRun();
+//                     if (!is_null($textRun)) {
+//                         $text .= $textRun->getContent();
+//                     }
+//                 }
+//             }
+//         }
+
+//         return response()->json([
+//             'status' => 'success',
+//             'documentText' => $text
+//         ]);
+//     } catch (\Exception $e) {
+//         return response()->json([
+//             'status' => 'error',
+//             'message' => $e->getMessage()
+//         ], 500);
+//     }
+// });
